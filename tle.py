@@ -7,6 +7,7 @@ import cartopy.crs as ccrs
 import cartopy.feature
 from matplotlib.colors import LinearSegmentedColormap
 import argparse
+
 import requests
 
 # Read current TLE data from file
@@ -20,21 +21,40 @@ def read_tle_from_file(filename):
 
     return line1, line2
 
-def fetch_latest_tle(norad_id):
-    """Fetch the latest TLE for a given NORAD ID from Celestrak."""
-    url = f"https://celestrak.org/NORAD/elements/gp.php?CATNR={norad_id}&FORMAT=TLE"
+# Fetch TLE and satellite info from SatNOGS API
+def fetch_tle_and_info_from_satnogs(norad_id=None, satnogs_id=None):
+    """Fetch the latest TLE and satellite info for a given NORAD ID or SatNOGS satellite ID from SatNOGS API."""
+    tle_url = None
+    info_url = None
+    if norad_id:
+        tle_url = f'https://db.satnogs.org/api/tle/?norad_cat_id={norad_id}'
+        info_url = f'https://db.satnogs.org/api/satellites/?norad_cat_id={norad_id}'
+    elif satnogs_id:
+        tle_url = f'https://db.satnogs.org/api/tle/?satellite={satnogs_id}'
+        info_url = f'https://db.satnogs.org/api/satellites/{satnogs_id}'
+    else:
+        return None, None, None
+    tle1, tle2, sat_info = None, None, None
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(tle_url, timeout=10)
         if response.status_code == 200:
-            lines = response.text.strip().splitlines()
-            # Celestrak returns 3 lines: name, line1, line2
-            if len(lines) >= 3:
-                return lines[1], lines[2]
-            elif len(lines) == 2:
-                return lines[0], lines[1]
+            data = response.json()
+            if data:
+                tle1, tle2 = data[0]['tle1'], data[0]['tle2']
     except Exception as e:
-        print(f"Error fetching TLE from Celestrak: {e}")
-    return None, None
+        print(f"Error fetching TLE from SatNOGS: {e}")
+    try:
+        response = requests.get(info_url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            # /api/satellites/?norad_cat_id=... returns a list, /api/satellites/<uuid> returns a dict
+            if isinstance(data, list) and data:
+                sat_info = data[0]
+            elif isinstance(data, dict) and data:
+                sat_info = data
+    except Exception as e:
+        print(f"Error fetching satellite info from SatNOGS: {e}")
+    return tle1, tle2, sat_info
 
 # City coordinates dictionary - available globally
 CITIES = {
@@ -173,7 +193,7 @@ def calculate_speed(velocity):
     speed_kmph = speed_kmps * 3600  # Convert to km/h
     return speed_kmps, speed_kmph
 
-def find_next_city_overfly(satellite, start_time, city_name=None, max_hours=48):
+def find_next_city_overfly(satellite, start_time, city_name=None, max_hours=48, overfly_radius=1000):
     """Find the next time the satellite overflies a selected city
 
     Args:
@@ -181,6 +201,7 @@ def find_next_city_overfly(satellite, start_time, city_name=None, max_hours=48):
         start_time: datetime object representing the start time for the search
         city_name: Name of the city to find overfly for (must be in CITIES dict)
         max_hours: Maximum number of hours to search for an overfly
+        overfly_radius: Overfly radius in km
 
     Returns:
         Tuple of (overfly_time, closest_distance, city_name)
@@ -218,8 +239,8 @@ def find_next_city_overfly(satellite, start_time, city_name=None, max_hours=48):
             sat_lat, sat_lon, alt = eci_to_geodetic(position[0], position[1], position[2], jd + fr)
             distance = calculate_distance(sat_lat, sat_lon, city_lat, city_lon)
 
-            # Consider it an overfly if within 2000 km (much broader coverage)
-            if distance < 2000 and distance < closest_distance:
+            # Consider it an overfly if within the specified radius
+            if distance < overfly_radius and distance < closest_distance:
                 closest_distance = distance
                 closest_time = check_time
 
@@ -228,18 +249,22 @@ def find_next_city_overfly(satellite, start_time, city_name=None, max_hours=48):
 if __name__ == "__main__":
     # Parse command-line arguments (move this up before TLE selection)
     parser = argparse.ArgumentParser(description='TLE Orbit Visualization and City Overfly Calculation')
-    parser.add_argument('--city', type=str, choices=CITIES.keys(), default="Santa Barbara",
-                        help='City for which to calculate satellite overfly')
-    parser.add_argument('--norad-id', type=int, default=98581, help='NORAD ID of the satellite (default: 98581)')
+    parser.add_argument('--city', type=str, choices=CITIES.keys(), default=None,
+                        help='City for which to calculate satellite overfly (omit to skip overfly calculation)')
+    parser.add_argument('--overfly-radius', type=int, choices=[500, 1000, 2000], default=1000,
+                        help='Radius in km for overfly calculation: 500 (high elevation), 1000 (practical visibility, default), 2000 (broad overfly)')
+    parser.add_argument('--norad-id', type=int, default=98581, help='NORAD Catalog ID of the satellite (default: 98581)')
+    parser.add_argument('--satnogs-id', type=str, default="JLJE-0670-3801-0857-8118", help='SatNOGS internal satellite ID (UUID) (default: JLJE-0670-3801-0857-8118)')
     args = parser.parse_args()
 
-    # Try to fetch the latest TLE from Celestrak first
-    line1, line2 = fetch_latest_tle(args.norad_id)
+    # Try to fetch the latest TLE and satellite info from SatNOGS first (prefer norad_id if both are provided)
+    line1, line2, sat_info = fetch_tle_and_info_from_satnogs(norad_id=args.norad_id, satnogs_id=args.satnogs_id)
     if line1 and line2:
-        print(f"Using TLE data from Celestrak for NORAD ID {args.norad_id}:")
+        print(f"Using TLE data from SatNOGS for NORAD ID {args.norad_id} or SatNOGS ID {args.satnogs_id}:")
         print(f"Line 1: {line1}")
         print(f"Line 2: {line2}")
     else:
+        print(f"Could not fetch TLE for NORAD ID {args.norad_id} or SatNOGS ID {args.satnogs_id} from SatNOGS. Defaulting to latest_tle.txt.")
         try:
             line1, line2 = read_tle_from_file('latest_tle.txt')
             print(f"Using TLE data from latest_tle.txt:")
@@ -250,6 +275,18 @@ if __name__ == "__main__":
             # Fallback to sample data
             line1 = "1 98580C 25135BL  25174.99035276 -.00080323  00000+0 -80437-2 0 00"
             line2 = "2 98580  97.7470 289.3930 0004228  87.9095 217.7754 14.91521210 14"
+        sat_info = None
+
+    # Print SatNOGS satellite info if available
+    print("\n" + "="*50)
+    print("SATNOGS SATELLITE INFO")
+    print("="*50)
+    if sat_info:
+        for k, v in sat_info.items():
+            print(f"{k}: {v}")
+    else:
+        print("No SatNOGS satellite info available.")
+    print("="*50 + "\n")
 
     # Create satellite record with the fetched TLE
     satellite = Satrec.twoline2rv(line1, line2)
@@ -304,40 +341,38 @@ if __name__ == "__main__":
         print("  python tle.py --city Helgoland")
         print("  python tle.py --city Milan")
         print("  python tle.py --city \"Santa Barbara\"")
-        print("To select a different satellite, use the --norad-id argument:")
+        print("To select a different satellite, use the --norad-id or --satnogs-id argument:")
         print("  python tle.py --norad-id 25544")
         print("  python tle.py --norad-id 98581")
+        print("  python tle.py --satnogs-id JLJE-0670-3801-0857-8118")
         print("You can combine both arguments:")
         print("  python tle.py --city Berlin --norad-id 25544")
         print("  python tle.py --city Milan --norad-id 98581")
+        print("  python tle.py --city Berlin --satnogs-id JLJE-0670-3801-0857-8118")
+        print("  python tle.py --city Milan --norad-id 98581 --satnogs-id JLJE-0670-3801-0857-8118")
         print("="*50 + "\n")
 
-        # Find next city overfly
+    # Always show the map, even if no city is selected
+    # Only calculate and print overfly if a city is given
+    if args.city:
         print("\n" + "="*50)
         print("CITY OVERFLY CALCULATION")
         print("="*50)
-        # List of available cities
         print("Available cities for overfly calculation:")
         for city, data in CITIES.items():
             print(f"- {city}, {data['country']} ({data['lat']}°, {data['lon']}°)")
-
-        # Use the city from command-line argument
         selected_city = args.city
         print(f"Using city: {selected_city}")
-
-        next_overfly_time, closest_distance, city_name = find_next_city_overfly(satellite, now, selected_city)
-
+        next_overfly_time, closest_distance, city_name = find_next_city_overfly(satellite, now, selected_city, overfly_radius=args.overfly_radius)
         if next_overfly_time:
             time_until_overfly = next_overfly_time - now
             hours = int(time_until_overfly.total_seconds() // 3600)
             minutes = int((time_until_overfly.total_seconds() % 3600) // 60)
-
             print(f"Next {city_name} overfly:")
             print(f"  Time: {next_overfly_time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
             print(f"  In: {hours} hours, {minutes} minutes")
             print(f"  Closest distance: {closest_distance:.1f} km")
-
-            # Calculate satellite position and speed at overfly time
+            print(f"  (Overfly radius used: {args.overfly_radius} km)")
             o_yr, o_mo, o_dy, o_hr, o_mi, o_se = next_overfly_time.year, next_overfly_time.month, next_overfly_time.day, next_overfly_time.hour, next_overfly_time.minute, next_overfly_time.second
             o_jd, o_fr = jday(o_yr, o_mo, o_dy, o_hr, o_mi, o_se)
             o_err, o_pos, o_vel = satellite.sgp4(o_jd, o_fr)
@@ -350,100 +385,87 @@ if __name__ == "__main__":
         else:
             print(f"No {city_name} overfly found in the next 48 hours")
         print("="*50 + "\n")
+        print("Overfly radius options:")
+        print("  500 km   - High elevation (best for communication)")
+        print("  1000 km  - Practical visibility (default)")
+        print("  2000 km  - Broad overfly (includes low elevation)")
+        print("You can select with --overfly-radius. Example:")
+        print("  python tle.py --city Berlin --overfly-radius 500")
+        print("  python tle.py --city Berlin --overfly-radius 2000")
+        print("="*50 + "\n")
 
-        # Calculate trajectory for the next 90 minutes (every minute)
-        lats, lons = [], []
-        for minute in range(0, 91):
-            future_time = now + timedelta(minutes=minute)
-            f_yr, f_mo, f_dy, f_hr, f_mi, f_se = future_time.year, future_time.month, future_time.day, future_time.hour, future_time.minute, future_time.second
-            f_jd, f_fr = jday(f_yr, f_mo, f_dy, f_hr, f_mi, f_se)
-            err, pos, vel = satellite.sgp4(f_jd, f_fr)
-            if err == 0:
-                plat, plon, _ = eci_to_geodetic(pos[0], pos[1], pos[2], f_jd + f_fr)
-                lats.append(plat)
-                lons.append(plon)
-            else:
-                lats.append(np.nan)
-                lons.append(np.nan)
+    # Map plotting code (always show the map)
+    # Calculate trajectory for the next 90 minutes (every minute)
+    lats, lons = [], []
+    for minute in range(0, 91):
+        future_time = now + timedelta(minutes=minute)
+        f_yr, f_mo, f_dy, f_hr, f_mi, f_se = future_time.year, future_time.month, future_time.day, future_time.hour, future_time.minute, future_time.second
+        f_jd, f_fr = jday(f_yr, f_mo, f_dy, f_hr, f_mi, f_se)
+        err, pos, vel = satellite.sgp4(f_jd, f_fr)
+        if err == 0:
+            plat, plon, _ = eci_to_geodetic(pos[0], pos[1], pos[2], f_jd + f_fr)
+            lats.append(plat)
+            lons.append(plon)
+        else:
+            lats.append(np.nan)
+            lons.append(np.nan)
 
-        # Calculate previous trajectory for the last 90 minutes (every minute)
-        prev_lats, prev_lons = [], []
-        for minute in range(-90, 1):
-            past_time = now + timedelta(minutes=minute)
-            p_yr, p_mo, p_dy, p_hr, p_mi, p_se = past_time.year, past_time.month, past_time.day, past_time.hour, past_time.minute, past_time.second
-            p_jd, p_fr = jday(p_yr, p_mo, p_dy, p_hr, p_mi, p_se)
-            err, pos, vel = satellite.sgp4(p_jd, p_fr)
-            if err == 0:
-                plat, plon, _ = eci_to_geodetic(pos[0], pos[1], pos[2], p_jd + p_fr)
-                prev_lats.append(plat)
-                prev_lons.append(plon)
-            else:
-                prev_lats.append(np.nan)
-                prev_lons.append(np.nan)
+    # Calculate previous trajectory for the last 90 minutes (every minute)
+    prev_lats, prev_lons = [], []
+    for minute in range(-90, 1):
+        past_time = now + timedelta(minutes=minute)
+        p_yr, p_mo, p_dy, p_hr, p_mi, p_se = past_time.year, past_time.month, past_time.day, past_time.hour, past_time.minute, past_time.second
+        p_jd, p_fr = jday(p_yr, p_mo, p_dy, p_hr, p_mi, p_se)
+        err, pos, vel = satellite.sgp4(p_jd, p_fr)
+        if err == 0:
+            plat, plon, _ = eci_to_geodetic(pos[0], pos[1], pos[2], p_jd + p_fr)
+            prev_lats.append(plat)
+            prev_lons.append(plon)
+        else:
+            prev_lats.append(np.nan)
+            prev_lons.append(np.nan)
 
-        # Handle longitude wrapping for plotting
-        lons = np.array(lons)
-        lats = np.array(lats)
-        prev_lons = np.array(prev_lons)
-        prev_lats = np.array(prev_lats)
+    # Handle longitude wrapping for plotting
+    lons = np.array(lons)
+    lats = np.array(lats)
+    prev_lons = np.array(prev_lons)
+    prev_lats = np.array(prev_lats)
+    lons_unwrapped = np.unwrap(np.radians(lons))
+    lons_unwrapped = np.degrees(lons_unwrapped)
+    prev_lons_unwrapped = np.unwrap(np.radians(prev_lons))
+    prev_lons_unwrapped = np.degrees(prev_lons_unwrapped)
 
-        # Unwrap longitudes to handle crossing the 180/-180 meridian
-        lons_unwrapped = np.unwrap(np.radians(lons))
-        lons_unwrapped = np.degrees(lons_unwrapped)
-        prev_lons_unwrapped = np.unwrap(np.radians(prev_lons))
-        prev_lons_unwrapped = np.degrees(prev_lons_unwrapped)
-
-        # Plot on map
-        plt.figure(figsize=(16, 8))  # Wider figure for better world view
-        ax = plt.axes(projection=ccrs.PlateCarree())
-
-        # Set map boundaries to show the full world
-        ax.set_global()
-        ax.set_extent([-180, 180, -90, 90], crs=ccrs.PlateCarree())
-
-        # Set retro style with black background and green Earth
-        ax.set_facecolor('black')
-        plt.gcf().set_facecolor('black')
-
-        # Create a custom colormap for Earth (green tones)
-        earth_colors = ['#0a3d0a', '#1a5f1a', '#2d7a2d', '#4a9a4a', '#6bb86b']
-        earth_cmap = LinearSegmentedColormap.from_list('retro_earth', earth_colors)
-
-        # Add a simple green Earth representation (avoid facecolor warning)
-        ax.add_feature(cartopy.feature.LAND, alpha=0.8)
-        ax.add_feature(cartopy.feature.OCEAN, alpha=0.9)
-        ax.add_feature(cartopy.feature.COASTLINE, color='#4a9a4a', linewidth=0.8)
-        ax.add_feature(cartopy.feature.BORDERS, color='#6bb86b', linewidth=0.5, alpha=0.7)
-
-        # Only plot the selected city
-        if selected_city in CITIES:
-            city_coords = CITIES[selected_city]
-            ax.plot(city_coords["lon"], city_coords["lat"], 'o', color='#ffff00', markersize=8,
-                    transform=ccrs.PlateCarree())
-            ax.text(city_coords["lon"] + 1, city_coords["lat"], selected_city, color='#ffff00',
-                    fontsize=10, fontweight='bold', transform=ccrs.PlateCarree(), backgroundcolor='black')
-
-        # Set grid lines with retro styling
-        ax.gridlines(color='#4a9a4a', alpha=0.3, linewidth=0.5)
-
-        # (Removed facecolor argument to avoid warning)
-
-        ax.set_title(f'Satellite Ground Track (Previous 90 min + Next 90 min)\nSelected City: {selected_city}', color='#6bb86b', fontsize=14, fontweight='bold')
-
-        # Plot previous trajectory with dotted line
-        ax.plot(prev_lons_unwrapped, prev_lats, color='#ff6b35', linewidth=1.5, linestyle=':', label='Previous Path (90 min)', alpha=0.7, transform=ccrs.PlateCarree())
-
-        # Plot current trajectory with solid line
-        ax.plot(lons_unwrapped, lats, color='#ff6b35', linewidth=2, label='Future Path (90 min)', alpha=0.9, transform=ccrs.PlateCarree())
-
-        # Plot current position
-        ax.plot(lon, lat, color='#ff4757', marker='o', markersize=10, label='Current Position', alpha=0.9, transform=ccrs.PlateCarree())
-
-        # Style the legend
-        legend = ax.legend(facecolor='black', edgecolor='#4a9a4a', framealpha=0.8)
-        for text in legend.get_texts():
-            text.set_color('#6bb86b')
-
-        plt.show()
-    else:
-        print(f"SGP4 propagation error code: {error_code}")
+    # Plot on map
+    plt.figure(figsize=(16, 8))
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.set_global()
+    ax.set_extent([-180, 180, -90, 90], crs=ccrs.PlateCarree())
+    ax.set_facecolor('black')
+    plt.gcf().set_facecolor('black')
+    earth_colors = ['#0a3d0a', '#1a5f1a', '#2d7a2d', '#4a9a4a', '#6bb86b']
+    earth_cmap = LinearSegmentedColormap.from_list('retro_earth', earth_colors)
+    ax.add_feature(cartopy.feature.LAND, alpha=0.8)
+    ax.add_feature(cartopy.feature.OCEAN, alpha=0.9)
+    ax.add_feature(cartopy.feature.COASTLINE, color='#4a9a4a', linewidth=0.8)
+    ax.add_feature(cartopy.feature.BORDERS, color='#6bb86b', linewidth=0.5, alpha=0.7)
+    # Only plot the selected city if one is selected
+    if args.city and args.city in CITIES:
+        city_coords = CITIES[args.city]
+        ax.plot(city_coords["lon"], city_coords["lat"], 'o', color='#ffff00', markersize=8,
+                transform=ccrs.PlateCarree())
+        ax.text(city_coords["lon"] + 1, city_coords["lat"], args.city, color='#ffff00',
+                fontsize=10, fontweight='bold', transform=ccrs.PlateCarree(), backgroundcolor='black')
+    ax.gridlines(color='#4a9a4a', alpha=0.3, linewidth=0.5)
+    # (No facecolor argument)
+    title_city = args.city if args.city else "(no city selected)"
+    ax.set_title(f'Satellite Ground Track (Previous 90 min + Next 90 min)\nSelected City: {title_city}', color='#6bb86b', fontsize=14, fontweight='bold')
+    # Plot previous trajectory with dotted line
+    ax.plot(prev_lons_unwrapped, prev_lats, color='#ff6b35', linewidth=1.5, linestyle=':', label='Previous Path (90 min)', alpha=0.7, transform=ccrs.PlateCarree())
+    # Plot current trajectory with solid line
+    ax.plot(lons_unwrapped, lats, color='#ff6b35', linewidth=2, label='Future Path (90 min)', alpha=0.9, transform=ccrs.PlateCarree())
+    # Plot current position
+    ax.plot(lon, lat, color='#ff4757', marker='o', markersize=10, label='Current Position', alpha=0.9, transform=ccrs.PlateCarree())
+    legend = ax.legend(facecolor='black', edgecolor='#4a9a4a', framealpha=0.8)
+    for text in legend.get_texts():
+        text.set_color('#6bb86b')
+    plt.show()

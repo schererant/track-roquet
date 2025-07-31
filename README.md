@@ -1,6 +1,9 @@
-# tle.py - Satellite TLE Visualization and Overfly Calculator
+# Satellite TLE Tools - Visualization, Overfly, and Sun Exposure Calculators
 
-This script visualizes satellite orbits and calculates overfly times for selected cities using the latest TLE data from SatNOGS. It also displays detailed satellite information from SatNOGS and plots the satellite's ground track on a retro-style map.
+This repository contains tools for satellite orbit analysis using TLE data from SatNOGS:
+
+1. `tle.py` - Visualizes satellite orbits and calculates overfly times for selected cities
+2. `sun_exposure.py` - Calculates when a satellite is exposed to sunlight vs. in Earth's shadow
 
 ## Features
 - Fetches the latest TLE and satellite info from SatNOGS (by NORAD ID or SatNOGS UUID)
@@ -56,7 +59,78 @@ python tle.py [--city CITY] [--norad-id NORAD_ID] [--satnogs-id SATNOGS_ID] [--o
   python tle.py --city Berlin --overfly-radius 500
   ```
 
+## Sun Exposure Calculator Usage (sun_exposure.py)
+
+The sun_exposure.py script calculates when a satellite is in sunlight and when it's in Earth's shadow.
+
+```
+python sun_exposure.py --start-date START_DATE --end-date END_DATE [options]
+```
+
+### Command-line Arguments
+- `--start-date START_DATE` : Start date in ISO format (YYYY-MM-DDTHH:MM:SS)
+- `--end-date END_DATE`     : End date in ISO format (YYYY-MM-DDTHH:MM:SS)
+- `--norad-id NORAD_ID`     : NORAD Catalog ID of the satellite
+- `--satnogs-id SATNOGS_ID` : SatNOGS internal satellite ID/UUID
+- `--tle-file TLE_FILE`     : Path to a file containing TLE data
+- `--interval INTERVAL`     : Time interval in seconds for analysis (default: 60)
+- `--output OUTPUT`         : Output JSON filename (default: sun_exposure_YYYYMMDD-YYYYMMDD.json)
+
+### Example Usage
+- Calculate sun exposure using a local TLE file:
+  ```
+  python sun_exposure.py --start-date 2025-06-24T00:00:00 --end-date 2025-06-24T12:00:00 --tle-file latest_tle.txt
+  ```
+- Calculate sun exposure using NORAD ID:
+  ```
+  python sun_exposure.py --start-date 2025-06-24T00:00:00 --end-date 2025-06-24T12:00:00 --norad-id 98581
+  ```
+- Use a different time interval (e.g., 30 seconds):
+  ```
+  python sun_exposure.py --start-date 2025-06-24T00:00:00 --end-date 2025-06-24T12:00:00 --tle-file latest_tle.txt --interval 30
+  ```
+- By default, the output filename includes the date range:
+  ```
+  python sun_exposure.py --start-date 2025-06-24T00:00:00 --end-date 2025-06-24T12:00:00 --tle-file latest_tle.txt
+  # Creates: sun_exposure_20250624-20250624.json
+  ```
+- Save output to a custom filename:
+  ```
+  python sun_exposure.py --start-date 2025-06-24T00:00:00 --end-date 2025-06-24T12:00:00 --tle-file latest_tle.txt --output my_satellite_exposure.json
+  ```
+
+### Output Format
+The script generates a JSON file with the following structure:
+
+```json
+{
+    "sun": [
+        ["2025-06-24T00:12:00+00:00", "2025-06-24T01:12:00+00:00"],
+        ["2025-06-24T01:47:00+00:00", "2025-06-24T02:47:00+00:00"]
+    ],
+    "dark": [
+        ["2025-06-24T00:00:00+00:00", "2025-06-24T00:12:00+00:00"],
+        ["2025-06-24T01:12:00+00:00", "2025-06-24T01:47:00+00:00"]
+    ]
+}
+```
+
+The CLI output provides a more readable format with duration information:
+```
+Sample sun exposure periods:
+  1. 2025-06-24 00:12:00 → 01:12:00 (duration: 1h 0m 0s)
+  2. 2025-06-24 01:47:00 → 02:47:00 (duration: 1h 0m 0s)
+
+Sample shadow periods:
+  1. 2025-06-24 00:00:00 → 00:12:00 (duration: 0h 12m 0s)
+  2. 2025-06-24 01:12:00 → 01:47:00 (duration: 0h 35m 0s)
+
+Total duration analyzed: 12h 0m 0s
+Time in sunlight: 7h 43m 0s (64.3%)
+Time in shadow: 4h 17m 0s (35.7%)
+```
+
 ## Notes
-- The script will always show the map and satellite info, even if no city is selected.
-- If SatNOGS is unavailable, it will fall back to the local `latest_tle.txt` file.
-- For best results, keep `latest_tle.txt` up to date if using fallback mode. 
+- Both scripts will fall back to the local `latest_tle.txt` file if SatNOGS is unavailable.
+- For best results, keep `latest_tle.txt` up to date if using fallback mode.
+- The sun exposure calculations use a simplified model of Earth's shadow.

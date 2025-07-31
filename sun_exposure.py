@@ -256,8 +256,10 @@ def main():
     parser.add_argument('--tle-file', type=str, help='File containing TLE data')
     parser.add_argument('--interval', type=int, default=60,
                         help='Time interval in seconds for analysis (default: 60)')
-    parser.add_argument('--output', type=str, default='sun_exposure.json',
-                        help='Output file name (default: sun_exposure.json)')
+    parser.add_argument('--output', type=str, default=None,
+                        help='Output file name (default: sun_exposure_YYYYMMDD-YYYYMMDD.json)')
+
+
 
     args = parser.parse_args()
 
@@ -298,8 +300,16 @@ def main():
     out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
     os.makedirs(out_dir, exist_ok=True)
 
+    # Generate output filename with timestamps if not provided
+    if args.output is None:
+        start_date_str = start_time.strftime("%Y%m%d")
+        end_date_str = end_time.strftime("%Y%m%d")
+        output_filename = f"sun_exposure_{start_date_str}-{end_date_str}.json"
+    else:
+        output_filename = args.output
+
     # Save results to file
-    output_path = os.path.join(out_dir, args.output)
+    output_path = os.path.join(out_dir, output_filename)
     with open(output_path, 'w') as f:
         json.dump(exposure_data, f, indent=4)
 
@@ -310,14 +320,30 @@ def main():
     print(f"Total sun exposure periods: {len(exposure_data['sun'])}")
     print(f"Total shadow periods: {len(exposure_data['dark'])}")
 
-    # Print first few periods as examples
+    # Print first few periods as examples with readable timestamps and duration
     print("\nSample sun exposure periods:")
     for i, period in enumerate(exposure_data['sun'][:3]):
-        print(f"  {i+1}. {period[0]} to {period[1]}")
+        start = datetime.fromisoformat(period[0])
+        end = datetime.fromisoformat(period[1])
+        duration = end - start
+        hours, remainder = divmod(duration.total_seconds(), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        duration_str = f"{int(hours)}h {int(minutes)}m {int(seconds)}s"
+        start_str = start.strftime("%Y-%m-%d %H:%M:%S")
+        end_str = end.strftime("%H:%M:%S")  # Just time for end to make it more compact
+        print(f"  {i+1}. {start_str} → {end_str} (duration: {duration_str})")
 
     print("\nSample shadow periods:")
     for i, period in enumerate(exposure_data['dark'][:3]):
-        print(f"  {i+1}. {period[0]} to {period[1]}")
+        start = datetime.fromisoformat(period[0])
+        end = datetime.fromisoformat(period[1])
+        duration = end - start
+        hours, remainder = divmod(duration.total_seconds(), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        duration_str = f"{int(hours)}h {int(minutes)}m {int(seconds)}s"
+        start_str = start.strftime("%Y-%m-%d %H:%M:%S")
+        end_str = end.strftime("%H:%M:%S")  # Just time for end to make it more compact
+        print(f"  {i+1}. {start_str} → {end_str} (duration: {duration_str})")
 
     # Calculate total exposure time
     sun_duration = timedelta()
@@ -335,9 +361,19 @@ def main():
     total_duration = end_time - start_time
     sun_percentage = (sun_duration.total_seconds() / total_duration.total_seconds()) * 100
 
-    print(f"\nTotal duration analyzed: {total_duration}")
-    print(f"Time in sunlight: {sun_duration} ({sun_percentage:.1f}%)")
-    print(f"Time in shadow: {dark_duration} ({100-sun_percentage:.1f}%)")
+    # Format duration strings
+    def format_duration(td):
+        hours, remainder = divmod(td.total_seconds(), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{int(hours)}h {int(minutes)}m {int(seconds)}s"
+
+    total_str = format_duration(total_duration)
+    sun_str = format_duration(sun_duration)
+    dark_str = format_duration(dark_duration)
+
+    print(f"\nTotal duration analyzed: {total_str}")
+    print(f"Time in sunlight: {sun_str} ({sun_percentage:.1f}%)")
+    print(f"Time in shadow: {dark_str} ({100-sun_percentage:.1f}%)")
 
 
 if __name__ == "__main__":

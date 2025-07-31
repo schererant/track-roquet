@@ -62,7 +62,8 @@ CITIES = {
     "Helgoland": {"lat": 54.1833, "lon": 7.8833, "country": "Germany"},
     "Berlin": {"lat": 52.5200, "lon": 13.4050, "country": "Germany"},
     "Vienna": {"lat": 48.2082, "lon": 16.3738, "country": "Austria"},
-    "Milan": {"lat": 45.4642, "lon": 9.1900, "country": "Italy"}
+    "Milan": {"lat": 45.4642, "lon": 9.1900, "country": "Italy"},
+    "Munich": {"lat": 48.137154, "lon": 11.576124, "country": "Germany"}
 }
 
 def analyze_orbit_from_tle(line1, line2, satellite=None):
@@ -255,6 +256,8 @@ if __name__ == "__main__":
                         help='Radius in km for overfly calculation: 500 (high elevation), 1000 (practical visibility, default), 2000 (broad overfly)')
     parser.add_argument('--norad-id', type=int, default=98581, help='NORAD Catalog ID of the satellite (default: 98581)')
     parser.add_argument('--satnogs-id', type=str, default="JLJE-0670-3801-0857-8118", help='SatNOGS internal satellite ID (UUID) (default: JLJE-0670-3801-0857-8118)')
+    parser.add_argument('--future-min', type=int, default="90", help='Calculate n min in the future (default 90))')
+    parser.add_argument('--past-min', type=int, default="90", help='Calculate n min in the past (default 90))')
     args = parser.parse_args()
 
     # Try to fetch the latest TLE and satellite info from SatNOGS first (prefer norad_id if both are provided)
@@ -397,7 +400,7 @@ if __name__ == "__main__":
     # Map plotting code (always show the map)
     # Calculate trajectory for the next 90 minutes (every minute)
     lats, lons = [], []
-    for minute in range(0, 91):
+    for minute in range(0, args.future_min+1):
         future_time = now + timedelta(minutes=minute)
         f_yr, f_mo, f_dy, f_hr, f_mi, f_se = future_time.year, future_time.month, future_time.day, future_time.hour, future_time.minute, future_time.second
         f_jd, f_fr = jday(f_yr, f_mo, f_dy, f_hr, f_mi, f_se)
@@ -412,7 +415,7 @@ if __name__ == "__main__":
 
     # Calculate previous trajectory for the last 90 minutes (every minute)
     prev_lats, prev_lons = [], []
-    for minute in range(-90, 1):
+    for minute in range(-args.past_min, 1):
         past_time = now + timedelta(minutes=minute)
         p_yr, p_mo, p_dy, p_hr, p_mi, p_se = past_time.year, past_time.month, past_time.day, past_time.hour, past_time.minute, past_time.second
         p_jd, p_fr = jday(p_yr, p_mo, p_dy, p_hr, p_mi, p_se)
@@ -458,14 +461,15 @@ if __name__ == "__main__":
     ax.gridlines(color='#4a9a4a', alpha=0.3, linewidth=0.5)
     # (No facecolor argument)
     title_city = args.city if args.city else "(no city selected)"
-    ax.set_title(f'Satellite Ground Track (Previous 90 min + Next 90 min)\nSelected City: {title_city}', color='#6bb86b', fontsize=14, fontweight='bold')
+    ax.set_title(f'Satellite Ground Track (Previous {args.past_min} min + Next {args.future_min} min)\nSelected City: {title_city}', color='#6bb86b', fontsize=14, fontweight='bold')
     # Plot previous trajectory with dotted line
-    ax.plot(prev_lons_unwrapped, prev_lats, color='#ff6b35', linewidth=1.5, linestyle=':', label='Previous Path (90 min)', alpha=0.7, transform=ccrs.PlateCarree())
+    ax.plot(prev_lons_unwrapped, prev_lats, color='#ff6b35', linewidth=1.5, linestyle=':', label=f'Previous Path ({args.past_min} min)', alpha=0.7, transform=ccrs.PlateCarree())
     # Plot current trajectory with solid line
-    ax.plot(lons_unwrapped, lats, color='#ff6b35', linewidth=2, label='Future Path (90 min)', alpha=0.9, transform=ccrs.PlateCarree())
+    ax.plot(lons_unwrapped, lats, color='#ff6b35', linewidth=2, label=f'Future Path ({args.future_min} min)', alpha=0.9, transform=ccrs.PlateCarree())
     # Plot current position
     ax.plot(lon, lat, color='#ff4757', marker='o', markersize=10, label='Current Position', alpha=0.9, transform=ccrs.PlateCarree())
     legend = ax.legend(facecolor='black', edgecolor='#4a9a4a', framealpha=0.8)
     for text in legend.get_texts():
         text.set_color('#6bb86b')
+    plt.savefig("tle.svg")
     plt.show()

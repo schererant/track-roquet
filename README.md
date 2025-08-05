@@ -134,11 +134,11 @@ Time in shadow: 4h 17m 0s (35.7%)
 
 ## Flyover Calculator Usage (flyovers.py)
 
-The `flyovers.py` script calculates satellite passes for specific locations and provides cloud cover data for each pass, allowing you to plan observations when skies are clear.
+The `flyovers.py` script calculates satellite passes for specific locations and optionally provides cloud cover data for each pass, allowing you to plan observations when skies are clear. Cloud cover data is typically only available for approximately 48 hours into the future.
 
 ### Features
 - Calculates satellite rise, culmination, and set times for configured locations
-- Integrates with OpenWeatherMap API to fetch cloud cover forecasts for each site
+- Integrates with OpenWeatherMap API to fetch cloud cover forecasts for each site (optional)
 - Displays pass times in local time zones for easy planning
 - Configurable elevation threshold based on your imaging pointing accuracy
 
@@ -171,8 +171,12 @@ CONFIG = {
 ```
 
 ### Requirements
-- An OpenWeatherMap API key with access to the One Call API 3.0
-- Set your API key as an environment variable: `export OWM_API_KEY=your_api_key_here`
+- Python with the skyfield library and other dependencies
+- **Optional**: An OpenWeatherMap API key with access to the One Call API 3.0 (for cloud cover data)
+  - You need the "One Call by Call" subscription: https://openweathermap.org/api/one-call-3
+  - Set your API key as an environment variable: `export OWM_API_KEY=your_api_key_here`
+  - The script will still work without an API key, but won't show cloud cover data
+  - Cloud forecasts are typically only available for ~48 hours ahead; passes beyond this window will show "N/A*"
 
 ### Usage
 Run the script directly:
@@ -194,10 +198,16 @@ set         2025-07-23 03:22           10
 rise        2025-07-23 04:52           15
 culminate   2025-07-23 04:57           15
 set         2025-07-23 05:02           15
+rise        2025-07-23 14:30           N/A*
+culminate   2025-07-23 14:36           N/A*
+set         2025-07-23 14:41           N/A*
+
+Note: N/A* indicates times outside the available weather forecast window
 ```
 
 ## Notes
 - Both scripts will fall back to the local `latest_tle.txt` file if SatNOGS is unavailable.
 - For best results, keep `latest_tle.txt` up to date if using fallback mode.
 - The sun exposure calculations use a simplified model of Earth's shadow.
-- The `flyovers.py` script requires an OpenWeatherMap API key for cloud cover forecasts.
+- The `flyovers.py` script will calculate flyovers without an API key, but requires an OpenWeatherMap API key for cloud cover forecasts.
+- By default, `flyovers.py` calculates passes for tomorrow's date, as weather forecasts are typically only available for ~48 hours ahead.

@@ -62,7 +62,8 @@ CITIES = {
     "Helgoland": {"lat": 54.1833, "lon": 7.8833, "country": "Germany"},
     "Berlin": {"lat": 52.5200, "lon": 13.4050, "country": "Germany"},
     "Vienna": {"lat": 48.2082, "lon": 16.3738, "country": "Austria"},
-    "Milan": {"lat": 45.4642, "lon": 9.1900, "country": "Italy"}
+    "Milan": {"lat": 45.4642, "lon": 9.1900, "country": "Italy"},
+    "Porto": {"lat": 41.1579, "lon": -8.6291, "country": "Portugal"}
 }
 
 def analyze_orbit_from_tle(line1, line2, satellite=None):

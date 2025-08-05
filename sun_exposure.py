@@ -320,9 +320,9 @@ def main():
     print(f"Total sun exposure periods: {len(exposure_data['sun'])}")
     print(f"Total shadow periods: {len(exposure_data['dark'])}")
 
-    # Print first few periods as examples with readable timestamps and duration
-    print("\nSample sun exposure periods:")
-    for i, period in enumerate(exposure_data['sun'][:3]):
+    # Print all periods with readable timestamps and duration
+    print("\nAll sun exposure periods:")
+    for i, period in enumerate(exposure_data['sun']):
         start = datetime.fromisoformat(period[0])
         end = datetime.fromisoformat(period[1])
         duration = end - start
@@ -333,8 +333,8 @@ def main():
         end_str = end.strftime("%H:%M:%S")  # Just time for end to make it more compact
         print(f"  {i+1}. {start_str} → {end_str} (duration: {duration_str})")
 
-    print("\nSample shadow periods:")
-    for i, period in enumerate(exposure_data['dark'][:3]):
+    print("\nAll shadow periods:")
+    for i, period in enumerate(exposure_data['dark']):
         start = datetime.fromisoformat(period[0])
         end = datetime.fromisoformat(period[1])
         duration = end - start

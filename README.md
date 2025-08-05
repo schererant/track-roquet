@@ -4,6 +4,7 @@ This repository contains tools for satellite orbit analysis using TLE data from 
 
 1. `tle.py` - Visualizes satellite orbits and calculates overfly times for selected cities
 2. `sun_exposure.py` - Calculates when a satellite is exposed to sunlight vs. in Earth's shadow
+3. `flyovers.py` - Calculates satellite pass times for specific locations with cloud cover forecasts
 
 ## Features
 - Fetches the latest TLE and satellite info from SatNOGS (by NORAD ID or SatNOGS UUID)
@@ -12,6 +13,7 @@ This repository contains tools for satellite orbit analysis using TLE data from 
 - Calculates next overfly for a selected city (with configurable radius)
 - Plots the satellite's ground track and current position on a map
 - Supports multiple cities and overfly radius options
+- Calculates satellite flyover times with cloud cover forecasts using OpenWeatherMap API
 
 ## Requirements
 Install dependencies with:
@@ -130,7 +132,72 @@ Time in sunlight: 7h 43m 0s (64.3%)
 Time in shadow: 4h 17m 0s (35.7%)
 ```
 
+## Flyover Calculator Usage (flyovers.py)
+
+The `flyovers.py` script calculates satellite passes for specific locations and provides cloud cover data for each pass, allowing you to plan observations when skies are clear.
+
+### Features
+- Calculates satellite rise, culmination, and set times for configured locations
+- Integrates with OpenWeatherMap API to fetch cloud cover forecasts for each site
+- Displays pass times in local time zones for easy planning
+- Configurable elevation threshold based on your imaging pointing accuracy
+
+### Configuration
+The script uses a configuration dictionary that can be modified directly in the script:
+
+```
+CONFIG = {
+    # UTC date to examine passes for
+    "date_utc": date(2025, 7, 23),
+
+    # elevation threshold = your imaging pointing accuracy (degrees)
+    "min_elevation_deg": 0.5,
+
+    # sites to evaluate: name, (lat, lon), and local timezone
+    "sites": [
+        {"name": "Vienna",          "lat": 48.2082, "lon": 16.3738,   "tz": "Europe/Vienna", "elevation_m": 170},
+        {"name": "Munich",          "lat": 48.1351, "lon": 11.5820,   "tz": "Europe/Berlin", "elevation_m": 520},
+        {"name": "Santa Barbara",   "lat": 34.4208, "lon": -119.6982, "tz": "America/Los_Angeles", "elevation_m": 15},
+        {"name": "Milan",           "lat": 45.4642, "lon": 9.1900,    "tz": "Europe/Rome", "elevation_m": 120},
+        {"name": "Helgoland",       "lat": 54.1833, "lon": 7.9167,    "tz": "Europe/Berlin", "elevation_m": 4},
+    ],
+    
+    # satellite's TLE
+    "tle": [
+        "1 99999U 25007CV  25203.60326757  .00004178  00000-0  22378-3 0  9992",
+        "2 99999  97.4471 317.6742 0001204 152.1272 151.6357 15.17801187 59108"
+    ]
+}
+```
+
+### Requirements
+- An OpenWeatherMap API key with access to the One Call API 3.0
+- Set your API key as an environment variable: `export OWM_API_KEY=your_api_key_here`
+
+### Usage
+Run the script directly:
+
+```
+python flyovers.py
+```
+
+### Sample Output
+
+```
+=== Vienna on 2025-07-23 (Europe/Vienna) ===
+Pointing accuracy threshold: 0.5°
+Event       Time                  Clouds (%)
+--------------------------------------------------
+rise        2025-07-23 03:15           10
+culminate   2025-07-23 03:18           10
+set         2025-07-23 03:22           10
+rise        2025-07-23 04:52           15
+culminate   2025-07-23 04:57           15
+set         2025-07-23 05:02           15
+```
+
 ## Notes
 - Both scripts will fall back to the local `latest_tle.txt` file if SatNOGS is unavailable.
 - For best results, keep `latest_tle.txt` up to date if using fallback mode.
 - The sun exposure calculations use a simplified model of Earth's shadow.
+- The `flyovers.py` script requires an OpenWeatherMap API key for cloud cover forecasts.
